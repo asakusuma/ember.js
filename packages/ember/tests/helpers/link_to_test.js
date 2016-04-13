@@ -4,6 +4,7 @@ import Controller from 'ember-runtime/controllers/controller';
 import { set } from 'ember-metal/property_set';
 import Route from 'ember-routing/system/route';
 import run from 'ember-metal/run_loop';
+import { subscribe, unsubscribe } from 'ember-metal/instrumentation';
 import isEnabled from 'ember-metal/features';
 import alias from 'ember-metal/alias';
 import Application from 'ember-application/system/application';
@@ -44,7 +45,7 @@ function checkActive(selector, active) {
   equal(classList.indexOf('active') > -1, active, selector + ' active should be ' + active.toString());
 }
 
-var updateCount, replaceCount;
+var updateCount, replaceCount, subscriber;
 
 function sharedSetup() {
   App = Application.create({
@@ -76,6 +77,9 @@ function sharedSetup() {
 function sharedTeardown() {
   run(function() { App.destroy(); });
   Ember.TEMPLATES = {};
+  if (subscriber) {
+    unsubscribe(subscriber);
+  }
 }
 
 if (!isEnabled('ember-glimmer')) {
@@ -167,6 +171,83 @@ QUnit.test('The {{link-to}} helper moves into the named route', function() {
   equal(jQuery('#self-link.active', '#qunit-fixture').length, 1, 'The self-link was rendered with active class');
   equal(jQuery('#home-link:not(.active)', '#qunit-fixture').length, 1, 'The other link was rendered without active class');
 });
+
+if (isEnabled('ember-improved-instrumentation')) {
+  QUnit.test('The {{link-to}} helper fires an interaction event', function(assert) {
+    assert.expect(2);
+    Router.map(function(match) {
+      this.route('about');
+    });
+
+    bootApplication();
+
+    run(function() {
+      router.handleURL('/');
+    });
+
+    subscriber = subscribe('interaction.link-to', {
+      before() {
+        assert.ok(true, 'instrumentation subscriber was called');
+      },
+      after() {
+        assert.ok(true, 'instrumentation subscriber was called');
+      }
+    });
+
+    run(function() {
+      jQuery('#about-link', '#qunit-fixture').click();
+    });
+  });
+
+  QUnit.test('The {{link-to}} helper interaction event includes the route name', function(assert) {
+    assert.expect(2);
+    Router.map(function(match) {
+      this.route('about');
+    });
+
+    bootApplication();
+
+    run(function() {
+      router.handleURL('/');
+    });
+
+    subscriber = subscribe('interaction.link-to', {
+      before(name, timestamp, { routeName }) {
+        assert.equal(routeName, 'about', 'instrumentation subscriber was passed route name');
+      },
+      after(name, timestamp, { routeName }) {
+        assert.equal(routeName, 'about', 'instrumentation subscriber was passed route name');
+      }
+    });
+
+    run(function() {
+      jQuery('#about-link', '#qunit-fixture').click();
+    });
+  });
+
+  QUnit.test('The {{link-to}} helper interaction event includes the transition in the after hook', function(assert) {
+    assert.expect(1);
+    Router.map(function(match) {
+      this.route('about');
+    });
+
+    bootApplication();
+
+    run(function() {
+      router.handleURL('/');
+    });
+
+    subscriber = subscribe('interaction.link-to', {
+      after(name, timestamp, { transition }) {
+        assert.equal(transition.targetName, 'about', 'instrumentation subscriber was passed route name');
+      }
+    });
+
+    run(function() {
+      jQuery('#about-link', '#qunit-fixture').click();
+    });
+  });
+}
 
 QUnit.test('The {{link-to}} helper supports URL replacement', function() {
   Ember.TEMPLATES.index = compile('<h3>Home</h3>{{#link-to \'about\' id=\'about-link\' replace=true}}About{{/link-to}}');

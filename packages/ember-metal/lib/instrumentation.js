@@ -156,7 +156,7 @@ export function _instrumentStart(name, _payload) {
   var timestamp = time();
   for (i = 0; i < l; i++) {
     listener = listeners[i];
-    beforeValues[i] = listener.before(name, timestamp, payload);
+    beforeValues[i] = typeof listener.before === 'function' ? listener.before(name, timestamp, payload) : null;
   }
 
   return function _instrumentEnd() {

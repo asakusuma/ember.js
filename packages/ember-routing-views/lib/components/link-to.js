@@ -324,6 +324,7 @@ import 'ember-runtime/system/service'; // creates inject.service
 import ControllerMixin from 'ember-runtime/mixins/controller';
 import htmlbarsTemplate from 'ember-htmlbars/templates/link-to';
 import require from 'require';
+import { flaggedInstrument } from 'ember-metal/instrumentation';
 
 let layout = htmlbarsTemplate;
 if (isEnabled('ember-glimmer')) {
@@ -651,10 +652,17 @@ let LinkComponent = EmberComponent.extend({
     let routing = get(this, '_routing');
     let qualifiedRouteName = get(this, 'qualifiedRouteName');
     let models = get(this, 'models');
-    let queryParamValues = get(this, 'queryParams.values');
+    let queryParams = get(this, 'queryParams.values');
     let shouldReplace = get(this, 'replace');
 
-    routing.transitionTo(qualifiedRouteName, models, queryParamValues, shouldReplace);
+    let payload = {
+      queryParams,
+      routeName: qualifiedRouteName
+    };
+
+    flaggedInstrument('interaction.link-to', payload, () => {
+      payload.transition = routing.transitionTo(qualifiedRouteName, models, queryParams, shouldReplace);
+    });
   },
 
   queryParams: null,
