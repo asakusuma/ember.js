@@ -3,7 +3,7 @@ import compile from 'ember-template-compiler/system/compile';
 import EmberComponent from 'ember-htmlbars/component';
 import { computed } from 'ember-metal/computed';
 import { INVOKE } from 'ember-htmlbars/keywords/closure-action';
-import { subscribe, unsubscribe } from 'ember-metal/instrumentation';
+import { subscribe, reset } from 'ember-metal/instrumentation';
 import buildOwner from 'container/tests/test-helpers/build-owner';
 import { OWNER } from 'container/owner';
 import ComponentLookup from 'ember-views/component_lookup';
@@ -66,7 +66,6 @@ function appendViewFor(template, moduleName='', hash={}) {
 
 import { test, testModule } from 'ember-glimmer/tests/utils/skip-if-glimmer';
 
-let subscriber;
 testModule('ember-htmlbars: action helper', {
   setup() {
     originalViewKeyword = registerKeyword('view',  viewKeyword);
@@ -89,9 +88,7 @@ testModule('ember-htmlbars: action helper', {
     runDestroy(view);
     runDestroy(owner);
     resetKeyword('view', originalViewKeyword);
-    if (subscriber) {
-      unsubscribe(subscriber);
-    }
+    reset();
     owner = view = null;
     runDestroy(dispatcher);
   }
@@ -101,7 +98,7 @@ if (isEnabled('ember-improved-instrumentation')) {
   test('action should fire interaction event', function(assert) {
     assert.expect(2);
 
-    subscriber = subscribe('interaction.ember-action', {
+    subscribe('interaction.ember-action', {
       before() {
         assert.ok(true, 'instrumentation subscriber was called');
       }
@@ -134,7 +131,7 @@ if (isEnabled('ember-improved-instrumentation')) {
 
     let actionParam = 'So krispy';
 
-    subscriber = subscribe('interaction.ember-action', {
+    subscribe('interaction.ember-action', {
       before(name, timestamp, payload) {
         assert.equal(payload.args[0], actionParam, 'instrumentation subscriber before function was passed closure action parameters');
       },
@@ -166,7 +163,7 @@ if (isEnabled('ember-improved-instrumentation')) {
   test('interaction event subscriber should be passed target', function(assert) {
     assert.expect(2);
 
-    subscriber = subscribe('interaction.ember-action', {
+    subscribe('interaction.ember-action', {
       before(name, timestamp, payload) {
         assert.equal(payload.target.get('myProperty'), 'outer-thing', 'instrumentation subscriber before function was passed target');
       },
