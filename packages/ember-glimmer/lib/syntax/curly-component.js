@@ -41,6 +41,10 @@ class CurlyComponentManager {
   create(definition, args, dynamicScope) {
     let parentView = dynamicScope.view;
 
+    if (definition.isDynamic) {
+      definition.cast(args);
+    }
+
     let klass = definition.ComponentClass;
     let processedArgs = processArgs(args, klass.positionalParams);
     let { attrs, props } = processedArgs.value();
@@ -199,10 +203,23 @@ function elementId(vm) {
 }
 
 export class CurlyComponentDefinition extends ComponentDefinition {
-  constructor(name, ComponentClass, template, isBlock) {
-    super(name, MANAGER, ComponentClass || Component);
+  constructor(name, ComponentClass, isBlock, template) {
+    super(name, MANAGER, ComponentClass.isClass && ComponentClass || Component);
     this.template = template;
     this.isBlock = isBlock;
+    this.isDynamic = !ComponentClass.isClass;
+    if (this.isDynamic) {
+      this.ComponentClass = null;
+      this.search = ComponentClass;
+    }
+  }
+
+  cast(args) {
+    if (this.isDynamic) {
+      let { component, layout } = this.search(args);
+      this.ComponentClass = component;
+      this.template = layout;
+    }
   }
 
   compile(builder) {

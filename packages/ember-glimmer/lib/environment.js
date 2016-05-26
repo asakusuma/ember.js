@@ -34,8 +34,48 @@ import { default as classHelper } from './helpers/-class';
 import { default as queryParams } from './helpers/query-param';
 import { OWNER } from 'container/owner';
 
-const builtInComponents = {
+// When there is a one-to-one mapping between the component name and the
+// underlying component, key is the component name and value is the name of
+// the underlying component.
+const staticBuiltInComponents = {
   textarea: '-text-area'
+};
+
+// When there can be multiple underlying components for a given component name,
+// value is a function that, given the statement, returns a StatementSyntax.
+const dynamicBuiltInComponents = {
+  input(statement, isBlock) {
+    let {
+      path,
+      args,
+      templates
+    } = statement;
+    let typeArg = args.named.at('type');
+
+    if (!typeArg || typeArg.type === 'value') {
+      // If the type is static, we know the type upfront
+      let typeComponentName = '-text-field';
+      if (typeArg && typeArg.value === 'checkbox') {
+        typeComponentName = '-checkbox';
+        assert(
+          '{{input type=\'checkbox\'}} does not support setting `value=someBooleanValue`; ' +
+          'you must use `checked=someBooleanValue` instead.',
+          !args.named.has('value')
+        );
+      }
+      let definition = this.createComponentDefinition([typeComponentName], isBlock);
+      return new CurlyComponentSyntax({ args, definition, templates });
+    } else {
+      // If the dype is dynamic, we can't know the type until the args have been evaluated.
+      // Provide function to resolve the correct underlying component based on the type argument.
+      let resolver = (args) => {
+        let evaluatedTypeArg = args.named.get('type').compute();
+        return lookupComponent(this.owner, evaluatedTypeArg === 'checkbox' ? '-checkbox' : '-text-field');
+      };
+      let definition = this.createDynamicComponentDefinition('input', resolver, isBlock);
+      return new CurlyComponentSyntax({ args, definition, templates });
+    }
+  }
 };
 
 const builtInHelpers = {
@@ -129,6 +169,9 @@ export default class Environment extends GlimmerEnvironment {
       templates
     } = statement;
 
+    let staticBuiltIn = staticBuiltInComponents[key];
+    let dynamicBuiltIn = dynamicBuiltInComponents[key];
+
     if (key !== 'partial' && isSimple && (isInline || isBlock)) {
       if (key === 'component') {
         return new DynamicComponentSyntax({ args, templates, isBlock });
@@ -142,18 +185,20 @@ export default class Environment extends GlimmerEnvironment {
           wrapClassAttribute(args);
           return new CurlyComponentSyntax({ args, definition, templates });
         }
-      } else {
-        // Check if it's a keyword
-        let mappedKey = builtInComponents[key];
-        if (mappedKey) {
-          if (mappedKey !== key) {
-            path = path.map((segment) => segment === key ? mappedKey : segment);
-          }
-          let definition = this.createComponentDefinition(path, isBlock);
-          wrapClassBindingAttribute(args);
-          wrapClassAttribute(args);
-          return new CurlyComponentSyntax({ args, definition, templates });
+      } else if (staticBuiltIn) {
+        wrapClassBindingAttribute(args);
+        wrapClassAttribute(args);
+
+        if (staticBuiltIn !== key) {
+          path = path.map((segment) => segment === key ? staticBuiltIn : segment);
         }
+        let definition = this.createComponentDefinition(path, isBlock);
+        return new CurlyComponentSyntax({ args, definition, templates });
+      } else if (dynamicBuiltIn) {
+        wrapClassBindingAttribute(args);
+        wrapClassAttribute(args);
+
+        return dynamicBuiltIn.call(this, statement, isBlock);
       }
     }
 
@@ -167,6 +212,10 @@ export default class Environment extends GlimmerEnvironment {
     return false;
   }
 
+  createDynamicComponentDefinition(name, cast, isBlock) {
+    return new CurlyComponentDefinition(name, cast, isBlock);
+  }
+
   createComponentDefinition(name, isBlock) {
     let definition = this._components[name];
 
@@ -174,7 +223,7 @@ export default class Environment extends GlimmerEnvironment {
       let { component: ComponentClass, layout } = lookupComponent(this.owner, name[0]);
 
       if (ComponentClass || layout) {
-        definition = this._components[name] = new CurlyComponentDefinition(name, ComponentClass, layout, isBlock);
+        definition = this._components[name] = new CurlyComponentDefinition(name, ComponentClass, isBlock, layout);
       }
     }
 
